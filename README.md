@@ -1,9 +1,22 @@
 # eventflow
 
+[![Clojars Project](https://img.shields.io/clojars/v/io.github.bortexz/eventflow.svg)](https://clojars.org/io.github.bortexz/eventflow) [![Cljdoc](https://cljdoc.org/badge/io.github.bortexz/eventflow)](https://cljdoc.org/d/io.github.bortexz/eventflow)
+
 Event processing pipelines for Clojure.
 
+## Install
+### Leiningen/Boot
+```clojure
+[io.github.bortexz/eventflow "0.0.1"]
+```
+
+### Clojure CLI/deps.edn
+```clojure 
+io.github.bortexz/eventflow {:mvn/version "0.0.1"}
+```
+
 ## Status
-Alpha. It works and api may remain without breaking changes, but needs more time battle tested in production environments.
+Alpha. It works and api may remain without breaking changes, but needs more battle testing in production environments.
 
 ## Features
 
