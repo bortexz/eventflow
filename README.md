@@ -104,6 +104,9 @@ Options for each pipeline:
 
 ```
 
+## Inspiration 
+Thanks to James Trunk for [this](https://www.youtube.com/watch?v=nt_cMdqqaPE) presentation, and to Tim Baldridge for [this](https://www.youtube.com/watch?v=096pIlA3GDo) one. Both helped me shape this library.
+
 ## License
 
 Copyright © 2022 Alberto Fernandez
