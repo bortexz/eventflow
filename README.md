@@ -4,7 +4,7 @@ Event processing pipelines for Clojure.
 
 ## Features
 
-- Event processors as transducers that take events and (optionally) produce events.
+- Event processors are transducers that take events and (optionally) produce events.
 
 - **Incremental pipeline**, a pipeline implementation for controlled execution of events. Call `flush` to propagate the next event through it's processors (sequentially or in parallel), use `drain` to flush a pipeline until it has no more events left. Useful to run simulations or test your pipeline with a predefined set of events.
     
