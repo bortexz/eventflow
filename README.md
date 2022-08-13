@@ -15,10 +15,11 @@ Nodes are expressed as maps like:
 ```clojure
 (require '[bortexz.eventflow :as ef])
 
-{::ef/xform (map (fn [{::ef/keys [topic] :as event}]
+; Events shape is user defined, here a tuple [topic data] is used.
+{::ef/xform (map (fn [[topic data]]
                    (case topic
-                     :input-1 {::ef/topic :output-1}
-                     :input-2 {::ef/topic :output-2})))
+                     :input-1 [:output-1 data-1]
+                     :input-2 [:output-2 data-2])))
  ::ef/topics {:input-1 #{:output-1}
               :input-2 #{:output-2}}
  ::ef/async {::ef/parallelism 8
@@ -38,6 +39,8 @@ Nodes are expressed as maps like:
     - `::ef/combine-chs-fn` 1-arity fn that returns a core.async chan that combines each topic's ch to produce the events feeded into xform. Accepts a map `{<topic> <ch>}`, and defaults to `(core.async/merge (vals chs))`.
 
 ## Building pipelines
+Both pipelines accept `topic-fn` as first argument, and a map of pipeline-specific options.
+
 ```clojure
 
 ; This fn will work with both types of pipelines, so pipeline building can be reused across incremental/async pipelines
@@ -47,12 +50,10 @@ Nodes are expressed as maps like:
       (add-node :node-2 {...})
       (add-node :node-3 {...})))
 
-(def inc-p (ef/incremental-pipeline {::ef/topic-fn :topic
-                                     ::ef/parallel? true
-                                    }))
+(def inc-p (ef/incremental-pipeline first {::ef/parallel? true}))
 
-(def async-p (ef/async-pipeline {::ef/topic-fn :topic
-                                 ::ef/topic-buf-fn (fn [topic] (a/sliding-buffer 1))
+(def async-p (ef/async-pipeline first 
+                                {::ef/topic-buf-fn (fn [topic] (a/sliding-buffer 1))
                                  ::ef/ex-handler (fn [ex] ...)}))
 
 (build-pipeline inc-p)
@@ -62,10 +63,9 @@ Nodes are expressed as maps like:
 
 Options for each pipeline:
 - Incremental
-    - `::ef/topic-fn` fn executed with an event that returns a topic
     - `::ef/parallel?` when true, processing nodes for next event will happen in parallel
+
 - Async
-    - `::ef/topic-fn` fn executed with an event that returns a topic
     - `::ef/topic-buf-fn` returns async buffer/int/nil, to be used as buffer of each topics internal ch.
     - `::ef/ex-handler` exception handler for exceptions happening inside node transducers. Defaults to use the uncaught exception handler of thread.
 
@@ -73,10 +73,10 @@ Options for each pipeline:
 
 ### Incremental pipelines 
 ```clojure
-(defn inc-p (ef/incremental-pipeline {::ef/topic-fn :topic}))
+(defn inc-p (ef/incremental-pipeline first))
 
 ;; Publish events to the pipeline. It doesn't execute nodes, only stores the events in an internal queue.
-(ef/publish inc-p {:topic :topic-a})
+(ef/publish inc-p [:topic-a])
 
 ;; For processing the next event of the queue:
 (ef/flush inc-p) ; blocking until the event is processed by all nodes.
@@ -90,11 +90,11 @@ Options for each pipeline:
 
 ### Async pipelines
 ```clojure 
-(defn inc-p (ef/incremental-pipeline {::ef/topic-fn :topic}))
+(defn inc-p (ef/incremental-pipeline first))
 
 ;; Publish an event into the pipeline. If topic exists (i.e has any subscriber), then uses blocking >!! 
 ;; to publish the event for asynchronous processing. 
-(ef/publish inc-p {:topic :topic-a})
+(ef/publish inc-p [:topic-a])
 
 ;; You can publish into an async pipeline from an async chan directly:
 (ef/publish-ch inc-p _chan-producing-events)

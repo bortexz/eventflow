@@ -56,9 +56,12 @@
    called. Flush will propagate the first event of the queue through the pipeline, executing all nodes subscribed to the 
    event's `::topic`. This step might generate more events from the processing nodes that are added into the pipeline.
    Use [[drain]] to flush the pipeline in loop until no more events are emited.
+
+   Accepts `topic-fn` and an (optional) map of options.
+
+   `topic-fn` 1-arity fn that returns the topic from a given event.
    
    Options (namespaced):
-   - `::topic-fn` 1-arity fn called with each event to receive the topic value used for routing events to subscribers.
    - `::parallel?` if true, nodes are executed in parallel during [[flush]].
    
    Not thread safe currently, this pipeline is intended to be run from a single thread, behaviour in multithreading is 
@@ -154,8 +157,11 @@
    
    Using [[publish]] is blocking (uses >!!). [[publish-ch]] can be used to publish messages to the pipeline from a chan.
    
+   Accepts `topic-fn` and an (optional) map of options.
+
+   `topic-fn` 1-arity fn that returns the topic from a given event.
+
    Options (namespaced):
-   - `::topic-fn` 1-arity fn called with each event to receive the topic value used for routing events to subscribers.
    - `::topic-buf-fn` 1-arity fn that will be called each time a topic needs to be created with given topic, and must
    return a core.async buffer or int (fixed buffer) or nil for unbuffered. Defaults to `(constantly nil)`
    - `::ex-handler` 1-arity fn that will be called when processing a node throws an exception. The exception is an 
