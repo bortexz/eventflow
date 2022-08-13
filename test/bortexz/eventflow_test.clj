@@ -11,7 +11,7 @@
         node-b {::ef/xform (remove any?)
                 ::ef/topics {:topic-b #{}}}]
     (t/testing "base-operations"
-      (let [p (ef/incremental-pipeline)]
+      (let [p (ef/incremental-pipeline ::ef/topic)]
         (ef/-add-node p :node-a node-a)
         (ef/-add-node p :node-b node-b)
         (t/is (empty? (ef/pending-events p)))
@@ -27,7 +27,7 @@
         (t/is (empty? (ef/pending-events p)))))
 
     (t/testing "drain"
-      (let [p (ef/incremental-pipeline)]
+      (let [p (ef/incremental-pipeline ::ef/topic)]
         (ef/-add-node p :node-a node-a)
         (ef/-add-node p :node-b node-b)
         (ef/publish p event-a)
@@ -35,7 +35,7 @@
         (t/is (empty? (ef/pending-events p)))))
 
     (t/testing "parallel"
-      (let [p (ef/incremental-pipeline {::ef/parallel? true})]
+      (let [p (ef/incremental-pipeline ::ef/topic {::ef/parallel? true})]
         (ef/-add-node p :node-a node-a)
         (ef/-add-node p :node-b node-b)
         (ef/publish p event-a)
@@ -43,7 +43,7 @@
         (t/is (= event-b (peek (ef/pending-events p))))))
 
     (t/testing "if node throws, doesn't put new events"
-      (let [p (ef/incremental-pipeline)]
+      (let [p (ef/incremental-pipeline ::ef/topic)]
         (ef/-add-node p :node-a {::ef/xform (map (fn [_] (throw (ex-info "Error" {}))))
                                  ::ef/topics {:topic-a #{:topic-b}}})
         (ef/publish p event-a)
@@ -62,7 +62,7 @@
             node-b {::ef/xform (comp (map (fn [ev] (reset! event_ ev)))
                                      (remove any?))
                     ::ef/topics {:topic-b #{}}}
-            p (ef/async-pipeline)]
+            p (ef/async-pipeline ::ef/topic)]
         (-> p
             (ef/add-node :node-a node-a)
             (ef/add-node :node-b node-b)
@@ -83,8 +83,8 @@
             node-b {::ef/xform (comp (map (fn [ev] (reset! event_ ev)))
                                      (remove any?))
                     ::ef/topics {:topic-b #{}}}
-            p (ef/async-pipeline {::ef/ex-handler (fn [ex]
-                                                    (reset! exception_ ex))})]
+            p (ef/async-pipeline ::ef/topic {::ef/ex-handler (fn [ex]
+                                                               (reset! exception_ ex))})]
         (-> p
             (ef/add-node :node-a node-a)
             (ef/add-node :node-b node-b)
@@ -104,8 +104,8 @@
                     ::ef/topics {:topic-a #{}}
                     ::ef/async {::ef/parallelism 2
                                 ::ef/thread? true}}
-            p (ef/async-pipeline {::ef/ex-handler (fn [ex]
-                                                    (reset! exception_ ex))})]
+            p (ef/async-pipeline ::ef/topic {::ef/ex-handler (fn [ex]
+                                                               (reset! exception_ ex))})]
         (-> p
             (ef/add-node :node-a node-a)
             (ef/publish {::ef/topic :topic-a :data 1})

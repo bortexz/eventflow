@@ -66,8 +66,8 @@
    
    Adding a node that already exists, or trying to remove a node that doesn't exist will result in an exception.
    "
-  ([] (incremental-pipeline {}))
-  ([{::keys [parallel? topic-fn] :or {parallel? false}}]
+  ([topic-fn] (incremental-pipeline topic-fn {}))
+  ([topic-fn {::keys [parallel?] :or {parallel? false}}]
    (let [state_ (atom {:nodes {} ; {<node-id> <xform f>}
                        :topics {} ; {<topic> #{<node-id>}}
                        })
@@ -168,10 +168,10 @@
    Adding a node that already exists, or trying to remove a node that doesn't exist will result in an exception.
    A caveat about this: If multiple threads try to remove the same existing node, they will all block until the node is
    removed, without throwing an exception."
-  ([] (async-pipeline {}))
-  ([{::keys [topic-buf-fn ex-handler topic-fn]
-     :or {topic-buf-fn (constantly nil)
-          ex-handler uc/uncaught-exception}}]
+  ([topic-fn] (async-pipeline topic-fn {}))
+  ([topic-fn {::keys [topic-buf-fn ex-handler]
+              :or {topic-buf-fn (constantly nil)
+                   ex-handler uc/uncaught-exception}}]
    (let [topics_ (atom {}) ; topic->mult
          topics-fx!__ (atom (delay {})) ; (delay {<topic> <node-ids set>}) coordinate add/remove topic mults on topics_
          nodes_ (atom {}) ; {<node> (delay <side-effects add node> (delay <side effects removes node>))})}
