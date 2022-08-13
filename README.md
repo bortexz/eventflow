@@ -2,7 +2,7 @@
 
 Event processing pipelines for Clojure.
 
-## Features:
+## Features
 
 - Event processors as transducers that take events and (optionally) produce events.
 
