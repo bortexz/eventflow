@@ -16,7 +16,7 @@ io.github.bortexz/eventflow {:mvn/version "0.0.1"}
 ```
 
 ## Status
-Alpha. It works and api may remain without breaking changes, but needs more battle testing in production environments.
+Alpha. It currently works but hasn't yet been used in production. API may still undergo some breaking changes.
 
 ## Features
 
