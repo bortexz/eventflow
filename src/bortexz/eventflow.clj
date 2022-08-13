@@ -28,26 +28,24 @@
 ;; specs
 ;;
 
-(s/def ::topic keyword?)
-(s/def ::event (s/keys :req [::topic]))
+(s/def ::topic any?)
+(s/def ::topic-fn (s/fspec :args (s/cat :event any?)
+                           :ret ::topic))
 
 (s/def ::emits (s/coll-of ::topic))
 (s/def ::xform fn?)
 (s/def ::topics (s/map-of ::topic ::emits))
 (s/def ::parallelism pos-int?)
 (s/def ::thread? boolean?)
-(s/def ::topic-buf-fn
-  (s/fspec :args (s/cat :topic ::topic)))
-(s/def ::combine-chs-fn
-  (s/fspec :args (s/cat :topic-chs (s/map-of ::topic ua/chan?))))
+(s/def ::topic-buf-fn (s/fspec :args (s/cat :topic ::topic)))
+(s/def ::combine-chs-fn (s/fspec :args (s/cat :topic-chs (s/map-of ::topic ua/chan?))))
 
 (s/def ::async (s/keys :opt [::parallelism ::thread? ::topic-buf-fn ::combine-chs-fn]))
 (s/def ::node-config (s/keys :req [::xform ::topics]
                              :opt [::async]))
 
 (s/def ::parallel? boolean?)
-(s/def ::ex-handler
-  (s/fspec :args (s/cat :exception any?)))
+(s/def ::ex-handler (s/fspec :args (s/cat :exception any?)))
 
 ;;
 ;; api
@@ -59,13 +57,17 @@
    event's `::topic`. This step might generate more events from the processing nodes that are added into the pipeline.
    Use [[drain]] to flush the pipeline in loop until no more events are emited.
    
-   Accepts the following options (namespaced)
+   Options (namespaced):
+   - `::topic-fn` 1-arity fn called with each event to receive the topic value used for routing events to subscribers.
    - `::parallel?` if true, nodes are executed in parallel during [[flush]].
    
    Not thread safe currently, this pipeline is intended to be run from a single thread, behaviour in multithreading is 
-   undefined."
+   undefined.
+   
+   Adding a node that already exists, or trying to remove a node that doesn't exist will result in an exception.
+   "
   ([] (incremental-pipeline {}))
-  ([{::keys [parallel?] :or {parallel? false}}]
+  ([{::keys [parallel? topic-fn] :or {parallel? false}}]
    (let [state_ (atom {:nodes {} ; {<node-id> <xform f>}
                        :topics {} ; {<topic> #{<node-id>}}
                        })
@@ -125,7 +127,7 @@
        -IncrementalPipeline
        (-flush [this]
          (let [event (peek (medley/deref-swap! events_ pop))
-               t (::topic event)
+               t (topic-fn event)
                state @state_
                nodes (select-keys (:nodes state) (get (:topics state) t)) 
                next-evs (if parallel?
@@ -145,10 +147,31 @@
    ::combine-chs-fn (fn [chm] (a/merge (vals chm)))})
 
 (defn async-pipeline
-  "Creates an async pipeline"
+  "Creates an async pipeline, using core.async internally. When publishing a message, the event gets routed to an 
+   internal mult for the given topic. Topics are automatically added and removed depending if they have any subscriber. 
+   Messages to topics that have no subscribers are dropped at the publisher side. There is no internal router chan, 
+   routing to topic mults happens at the publisher/node side. 
+   
+   Using [[publish]] is blocking (uses >!!). [[publish-ch]] can be used to publish messages to the pipeline from a chan.
+   
+   Options (namespaced):
+   - `::topic-fn` 1-arity fn called with each event to receive the topic value used for routing events to subscribers.
+   - `::topic-buf-fn` 1-arity fn that will be called each time a topic needs to be created with given topic, and must
+   return a core.async buffer or int (fixed buffer) or nil for unbuffered. Defaults to `(constantly nil)`
+   - `::ex-handler` 1-arity fn that will be called when processing a node throws an exception. The exception is an 
+   ExceptionInfo with data {:node-id ... :event ... :exception <original node exception>}.
+   Defaults to use the uncaught exception handler of current thread.
+
+   Adding/removing nodes can be used from different threads safely. Removing a node is a blocking operation 
+   (uses <!! to wait until the node has finished processing all buffered events up until the removal).
+   
+   Adding a node that already exists, or trying to remove a node that doesn't exist will result in an exception.
+   A caveat about this: If multiple threads try to remove the same existing node, they will all block until the node is
+   removed, without throwing an exception."
   ([] (async-pipeline {}))
-  ([{::keys [topic-buf-fn ex-handler] :or {topic-buf-fn (constantly nil)
-                                           ex-handler uc/uncaught-exception}}]
+  ([{::keys [topic-buf-fn ex-handler topic-fn]
+     :or {topic-buf-fn (constantly nil)
+          ex-handler uc/uncaught-exception}}]
    (let [topics_ (atom {}) ; topic->mult
          topics-fx!__ (atom (delay {})) ; (delay {<topic> <node-ids set>}) coordinate add/remove topic mults on topics_
          nodes_ (atom {}) ; {<node> (delay <side-effects add node> (delay <side effects removes node>))})}
@@ -208,7 +231,7 @@
                                                (let [v (a/<!! input-ch)
                                                      os (execute-node node-id f v)]
                                                  (run! (fn [o]
-                                                         (when-let [t (get @topics_ (::topic o))]
+                                                         (when-let [t (get @topics_ (topic-fn o))]
                                                            (a/>!! (a/muxch* t) o)))
                                                        os)
                                                  (when (some? v) (recur)))))
@@ -216,7 +239,7 @@
                                              (let [v (a/<! input-ch)
                                                    os (execute-node node-id f v)]
                                                (doseq [o os]
-                                                 (when-let [t (get @topics_ (::topic o))]
+                                                 (when-let [t (get @topics_ (topic-fn o))]
                                                    (a/>! (a/muxch* t) o)))
                                                (when (some? v) (recur)))))))
                                      (range parallelism))]
@@ -256,7 +279,7 @@
 
        -Publish
        (-publish [this event]
-         (when-let [mult (get @topics_ (::topic event))]
+         (when-let [mult (get @topics_ (topic-fn event))]
            (a/>!! (a/muxch* mult) event))
          this)
 
@@ -264,35 +287,62 @@
        (-publish-ch [_ events-ch]
          (a/go-loop []
            (when-let [event (a/<! events-ch)]
-             (when-let [mult (get @topics_ (::topic event))]
+             (when-let [mult (get @topics_ (topic-fn event))]
                (a/>! (a/muxch* mult) event))
              (recur))))))))
 
-(defn add-node 
+(defn add-node
+  "Adds a node identified with `node-id` to given `pipeline`.
+   
+   `node-config` is a map of:
+   - `::xform` transducer that processes events and will automatically publish emitted values into the pipeline.
+   - `::topics` map of {<subscribed topic> #{<emits-topics>}}. Currently emitted topics are not used internally, but
+   mostly useful as documentation for the node. In the future this might be used to generate visualizations about the
+   pipeline.
+   - `::async` node options used on an async pipeline:
+     - `::parallelism` integer, number of workers that share the work for this node. Defaults to 1.
+     - `::thread?` boolean, if `true` then the execution of the xform happens inside a real thread, presumably for 
+     side-effects or heavy computations. Defaults to false. When false, uses go-loop, and the limitations about go block
+     apply to the execution of xform.
+     - `::topic-buf-fn` 1-arity fn accepting a topic and returns a core.async buffer, int (fixed buffer) 
+     or nil (unbuffered).
+     - `::combine-chs-fn` 1-arity fn accepting a map of {<topic> <ch>} and returns a chan that will contain the events
+     emitted from each topic's ch, that will further be consumed by the xform. 
+     Defaults to merging all values using `core.async/merge`.
+   
+   If node with given `node-id` already exists on the pipeline, throws exception.
+   "
   [pipeline node-id node-config]
   (-add-node pipeline node-id node-config))
 
 (defn remove-node
+  "Removes node with given `node-id` from `pipeline`. "
   [pipeline node-id]
   (-remove-node pipeline node-id))
 
 (defn publish 
+  "Publishes a new `event` into `pipeline`."
   [pipeline event]
   (-publish pipeline event))
 
 (defn publish-ch
+  "Publishes contents of `events-ch` into `async-pipeline`. Returns a ch that will close when the chan has been 
+   exhausted."
   [async-pipeline events-ch]
   (-publish-ch async-pipeline events-ch))
 
 (defn flush
-  [inc-pipeline]
-  (-flush inc-pipeline))
+  "Flushes the next event in the queue from an `incremental-pipeline`, processing all nodes subscribed to its topic."
+  [incremental-pipeline]
+  (-flush incremental-pipeline))
 
 (defn pending-events
-  [inc-pipeline]
-  (-pending-events inc-pipeline))
+  "Returns a PersistentQueue of the current events accumulated into `incremental-pipeline`"
+  [incremental-pipeline]
+  (-pending-events incremental-pipeline))
 
 (defn drain
-  [inc-pipeline]
-  (while (seq (pending-events inc-pipeline))
-    (flush inc-pipeline)))
+  "Drains given `incremental-pipeline`, executing [[flush]] until the pipeline doesn't have any more events pending."
+  [incremental-pipeline]
+  (while (seq (pending-events incremental-pipeline))
+    (flush incremental-pipeline)))
