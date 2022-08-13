@@ -50,7 +50,7 @@
         (t/is (thrown? clojure.lang.ExceptionInfo (ef/flush p)))
         (t/is (empty? (ef/pending-events p)))))))
 
-(def ^:private wait 10)
+(def ^:private wait 20)
 
 (t/deftest async-pipeline
   (let [event-a {::ef/topic :topic-a}
