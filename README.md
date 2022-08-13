@@ -2,6 +2,9 @@
 
 Event processing pipelines for Clojure.
 
+## Status
+Alpha. It works and api may remain without breaking changes, but needs more time battle tested in production environments.
+
 ## Features
 
 - Event processors are transducers that take events and (optionally) produce events.
